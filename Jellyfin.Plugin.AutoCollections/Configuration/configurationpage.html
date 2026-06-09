@@ -307,7 +307,8 @@
             { value: '1', text: 'Genre' },
             { value: '2', text: 'Studio' },
             { value: '3', text: 'Actor' },
-            { value: '4', text: 'Director' }
+            { value: '4', text: 'Director' },
+            { value: '5', text: 'Tag' }
           ];
           
           options.forEach(opt => {
@@ -388,6 +389,9 @@
                   break;
                 case 4: // Director
                   input.placeholder = 'Director name to match (e.g. Spielberg, Nolan)';
+                  break;
+                case 5: // Tag
+                  input.placeholder = 'Tag to match (e.g. 4K, Favorite)';
                   break;
                 default: // Title
                   input.placeholder = 'Text in title to match';
@@ -512,6 +516,9 @@
                         break;
                       case "Director":
                         matchTypeValue = 4;
+                        break;
+                      case "Tag":
+                        matchTypeValue = 5;
                         break;
                       // Fallback for numeric values (backward compatibility)
                       default:
@@ -648,6 +655,9 @@
                   break;
                 case 4:
                   matchTypeString = "Director";
+                  break;
+                case 5:
+                  matchTypeString = "Tag";
                   break;
                 default:
                   matchTypeString = "Title";

@@ -329,6 +329,10 @@ namespace Jellyfin.Plugin.AutoCollections
                 
                 Configuration.MatchType.Director => GetMoviesWithPerson(matchString, "Director", caseSensitive),
                 
+                Configuration.MatchType.Tag => allMovies.Where(movie => 
+                    movie.Tags != null && movie.Tags.Any(tag => 
+                        !string.IsNullOrEmpty(tag) && tag.Contains(matchString, comparison))),
+                
                 _ => allMovies.Where(movie => 
                     !string.IsNullOrEmpty(movie.Name) && movie.Name.Contains(matchString, comparison))
             };
@@ -365,6 +369,10 @@ namespace Jellyfin.Plugin.AutoCollections
                         // Use GetSeriesWithPerson which properly verifies the person's role in each series
                         Configuration.MatchType.Director => GetSeriesWithPerson(matchString, "Director", caseSensitive),
                         
+                        Configuration.MatchType.Tag => allSeries.Where(series => 
+                            series.Tags != null && series.Tags.Any(tag => 
+                                !string.IsNullOrEmpty(tag) && tag.Contains(matchString, comparison))),
+                        
                         _ => allSeries.Where(series => 
                             series.Name != null && series.Name.Contains(matchString, comparison)) // Default to title match
                     };
@@ -395,6 +403,10 @@ namespace Jellyfin.Plugin.AutoCollections
 
                 Configuration.MatchType.Director => items.Where(item =>
                     ItemHasPerson(item, matchString, "Director", caseSensitive)),
+
+                Configuration.MatchType.Tag => items.Where(item =>
+                    item.Tags != null && item.Tags.Any(tag =>
+                        !string.IsNullOrEmpty(tag) && tag.Contains(matchString, comparison))),
 
                 _ => items.Where(item =>
                     !string.IsNullOrEmpty(item.Name) && item.Name.Contains(matchString, comparison))
@@ -1134,6 +1146,7 @@ namespace Jellyfin.Plugin.AutoCollections
                 Configuration.MatchType.Studio => "studio",
                 Configuration.MatchType.Actor => "actor",
                 Configuration.MatchType.Director => "director",
+                Configuration.MatchType.Tag => "tag",
                 _ => "title"
             };
             
