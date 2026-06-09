@@ -369,6 +369,79 @@ namespace Jellyfin.Plugin.AutoCollections
                             series.Name != null && series.Name.Contains(matchString, comparison)) // Default to title match
                     };
                 }
+        // Generic match filter usable by item kinds that don't have dedicated
+        // strongly-typed pipelines (home videos and photos).
+        private IEnumerable<BaseItem> FilterItemsByMatch(IEnumerable<BaseItem> items, string matchString, bool caseSensitive, Configuration.MatchType matchType)
+        {
+            StringComparison comparison = caseSensitive
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+
+            return matchType switch
+            {
+                Configuration.MatchType.Title => items.Where(item =>
+                    !string.IsNullOrEmpty(item.Name) && item.Name.Contains(matchString, comparison)),
+
+                Configuration.MatchType.Genre => items.Where(item =>
+                    item.Genres != null && item.Genres.Any(genre =>
+                        !string.IsNullOrEmpty(genre) && genre.Contains(matchString, comparison))),
+
+                Configuration.MatchType.Studio => items.Where(item =>
+                    item.Studios != null && item.Studios.Any(studio =>
+                        !string.IsNullOrEmpty(studio) && studio.Contains(matchString, comparison))),
+
+                Configuration.MatchType.Actor => items.Where(item =>
+                    ItemHasPerson(item, matchString, "Actor", caseSensitive)),
+
+                Configuration.MatchType.Director => items.Where(item =>
+                    ItemHasPerson(item, matchString, "Director", caseSensitive)),
+
+                _ => items.Where(item =>
+                    !string.IsNullOrEmpty(item.Name) && item.Name.Contains(matchString, comparison))
+            };
+        }
+
+        // Get all home videos. Movies and episodes also derive from Video, so they
+        // are excluded here to keep this restricted to the Home Videos library kind.
+        private IEnumerable<Video> GetHomeVideosFromLibraryByMatch(string matchString, bool caseSensitive, Configuration.MatchType matchType)
+        {
+            var allVideos = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Video },
+                IsVirtualItem = false,
+                Recursive = true
+            }).OfType<Video>().Where(v => v is not Movie && v is not Episode);
+
+            return FilterItemsByMatch(allVideos, matchString, caseSensitive, matchType).OfType<Video>();
+        }
+
+        private IEnumerable<Photo> GetPhotosFromLibraryByMatch(string matchString, bool caseSensitive, Configuration.MatchType matchType)
+        {
+            var allPhotos = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Photo },
+                IsVirtualItem = false,
+                Recursive = true
+            }).OfType<Photo>();
+
+            return FilterItemsByMatch(allPhotos, matchString, caseSensitive, matchType).OfType<Photo>();
+        }
+
+        // Check whether an item has a person with the given name and role.
+        // Uses the people cache when available (during expression evaluation).
+        private bool ItemHasPerson(BaseItem item, string personName, string personType, bool caseSensitive)
+        {
+            StringComparison comparison = caseSensitive
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+
+            var people = GetCachedPeopleForItem(item);
+            return people.Any(p =>
+                !string.IsNullOrEmpty(p.Name) &&
+                p.Name.Contains(personName, comparison) &&
+                string.Equals(p.Type, personType, StringComparison.OrdinalIgnoreCase));
+        }
+
           // Keep these for backward compatibility
         private IEnumerable<Movie> GetMoviesFromLibraryByTitleMatch(string titleMatch, bool caseSensitive)
         {
@@ -439,7 +512,7 @@ namespace Jellyfin.Plugin.AutoCollections
                 
                 foreach (var item in itemsToAdd)
                 {
-                    var itemType = item is Movie ? "Movie" : item is Series ? "Series" : "Item";
+                    var itemType = item is Movie ? "Movie" : item is Series ? "Series" : item is Photo ? "Photo" : item is Video ? "Home video" : "Item";
                     var year = item.ProductionYear?.ToString() ?? "Unknown year";
                     _logger.LogDebug("  + Adding {Type}: '{Title}' ({Year}) (ID: {Id})", 
                         itemType, item.Name, year, item.Id);
@@ -842,9 +915,9 @@ namespace Jellyfin.Plugin.AutoCollections
                     }
                 }
 
-                // Last fallback: Use an image from a movie/series in the collection
+                // Last fallback: Use an image from a media item in the collection
                 var mediaItemWithImage = items
-                    .Where(item => item is Movie || item is Series)
+                    .Where(item => item is Movie || item is Series || item is Video || item is Photo)
                     .FirstOrDefault(item =>
                         item.ImageInfos != null &&
                         item.ImageInfos.Any(i => i.Type == ImageType.Primary));
@@ -1099,6 +1172,8 @@ namespace Jellyfin.Plugin.AutoCollections
             // Find all media items that match the pattern based on match type
             List<Movie> allMovies = new();
             List<Series> allSeries = new();
+            List<Video> allHomeVideos = new();
+            List<Photo> allPhotos = new();
             
             // Apply media type filter
             switch (titleMatchPair.MediaType)
@@ -1136,11 +1211,45 @@ namespace Jellyfin.Plugin.AutoCollections
                         _logger.LogDebug("  + Series: '{Title}' ({Year})", series.Name, year);
                     }
                     break;
+
+                case Configuration.MediaTypeFilter.HomeVideos:
+                    // Only include home videos
+                    _logger.LogDebug("Media filter: Home videos only");
+                    allHomeVideos = GetHomeVideosFromLibraryByMatch(
+                        titleMatchPair.TitleMatch,
+                        titleMatchPair.CaseSensitive,
+                        titleMatchPair.MatchType
+                    ).ToList();
+                    _logger.LogInformation($"Media filter: Home videos only - found {allHomeVideos.Count} matching items");
+
+                    foreach (var video in allHomeVideos)
+                    {
+                        var year = video.ProductionYear?.ToString() ?? "Unknown year";
+                        _logger.LogDebug("  + Home video: '{Title}' ({Year})", video.Name, year);
+                    }
+                    break;
+
+                case Configuration.MediaTypeFilter.Photos:
+                    // Only include photos
+                    _logger.LogDebug("Media filter: Photos only");
+                    allPhotos = GetPhotosFromLibraryByMatch(
+                        titleMatchPair.TitleMatch,
+                        titleMatchPair.CaseSensitive,
+                        titleMatchPair.MatchType
+                    ).ToList();
+                    _logger.LogInformation($"Media filter: Photos only - found {allPhotos.Count} matching items");
+
+                    foreach (var photo in allPhotos)
+                    {
+                        var year = photo.ProductionYear?.ToString() ?? "Unknown year";
+                        _logger.LogDebug("  + Photo: '{Title}' ({Year})", photo.Name, year);
+                    }
+                    break;
                     
                 case Configuration.MediaTypeFilter.All:
                 default:
-                    // Include both movies and series (default behavior)
-                    _logger.LogDebug("Media filter: All (movies and series)");
+                    // Include all supported media types (default behavior)
+                    _logger.LogDebug("Media filter: All (movies, series, home videos and photos)");
                     allMovies = GetMoviesFromLibraryByMatch(
                         titleMatchPair.TitleMatch, 
                         titleMatchPair.CaseSensitive, 
@@ -1152,7 +1261,19 @@ namespace Jellyfin.Plugin.AutoCollections
                         titleMatchPair.CaseSensitive, 
                         titleMatchPair.MatchType
                     ).ToList();
-                    _logger.LogInformation($"Media filter: All - found {allMovies.Count} movies and {allSeries.Count} series");
+
+                    allHomeVideos = GetHomeVideosFromLibraryByMatch(
+                        titleMatchPair.TitleMatch,
+                        titleMatchPair.CaseSensitive,
+                        titleMatchPair.MatchType
+                    ).ToList();
+
+                    allPhotos = GetPhotosFromLibraryByMatch(
+                        titleMatchPair.TitleMatch,
+                        titleMatchPair.CaseSensitive,
+                        titleMatchPair.MatchType
+                    ).ToList();
+                    _logger.LogInformation($"Media filter: All - found {allMovies.Count} movies, {allSeries.Count} series, {allHomeVideos.Count} home videos and {allPhotos.Count} photos");
                     
                     foreach (var movie in allMovies)
                     {
@@ -1168,9 +1289,13 @@ namespace Jellyfin.Plugin.AutoCollections
                     break;
             }
             
-            _logger.LogInformation($"Found {allMovies.Count} movies and {allSeries.Count} series matching {matchTypeText} pattern '{titleMatchPair.TitleMatch}' for collection: {collectionName}");
+            _logger.LogInformation($"Found {allMovies.Count} movies, {allSeries.Count} series, {allHomeVideos.Count} home videos and {allPhotos.Count} photos matching {matchTypeText} pattern '{titleMatchPair.TitleMatch}' for collection: {collectionName}");
             
-            var mediaItems = DedupeMediaItems(allMovies.Cast<BaseItem>().Concat(allSeries.Cast<BaseItem>()).ToList());
+            var mediaItems = DedupeMediaItems(allMovies.Cast<BaseItem>()
+                .Concat(allSeries.Cast<BaseItem>())
+                .Concat(allHomeVideos.Cast<BaseItem>())
+                .Concat(allPhotos.Cast<BaseItem>())
+                .ToList());
 
             await RemoveUnwantedMediaItems(collection, mediaItems);
             await AddWantedMediaItems(collection, mediaItems);
@@ -1477,6 +1602,11 @@ namespace Jellyfin.Plugin.AutoCollections
                 case Configuration.CriteriaType.Show:
                     // Always false for movies
                     return false;
+
+                case Configuration.CriteriaType.HomeVideo:
+                case Configuration.CriteriaType.Photo:
+                    // Always false for movies
+                    return false;
                     
                 case Configuration.CriteriaType.Tag:
                     return movie.Tags != null && 
@@ -1588,6 +1718,11 @@ namespace Jellyfin.Plugin.AutoCollections
                 case Configuration.CriteriaType.Show:
                     // Always true for series
                     return true;
+
+                case Configuration.CriteriaType.HomeVideo:
+                case Configuration.CriteriaType.Photo:
+                    // Always false for series
+                    return false;
                 
                 case Configuration.CriteriaType.Tag:
                     return series.Tags != null && 
@@ -1708,6 +1843,122 @@ namespace Jellyfin.Plugin.AutoCollections
             }
         }
 
+        // Method to evaluate a criteria for a generic library item (home videos, photos).
+        // These item kinds don't have the rich metadata of movies/series, but they share
+        // the common BaseItem properties, so the broadly-applicable criteria are supported.
+        private bool EvaluateGenericItemCriteria(BaseItem item, Configuration.CriteriaType criteriaType, string value, bool caseSensitive)
+        {
+            StringComparison comparison = caseSensitive
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+
+            switch (criteriaType)
+            {
+                case Configuration.CriteriaType.Title:
+                    return item.Name?.Contains(value, comparison) == true;
+
+                case Configuration.CriteriaType.Genre:
+                    return item.Genres != null &&
+                           item.Genres.Any(g => g.Contains(value, comparison));
+
+                case Configuration.CriteriaType.Studio:
+                    return item.Studios != null &&
+                           item.Studios.Any(s => s.Contains(value, comparison));
+
+                case Configuration.CriteriaType.Actor:
+                    return ItemHasPerson(item, value, "Actor", caseSensitive);
+
+                case Configuration.CriteriaType.Director:
+                    return ItemHasPerson(item, value, "Director", caseSensitive);
+
+                // Media type criteria
+                case Configuration.CriteriaType.Movie:
+                case Configuration.CriteriaType.Show:
+                    return false;
+
+                case Configuration.CriteriaType.HomeVideo:
+                    return item is Video && item is not Movie && item is not Episode;
+
+                case Configuration.CriteriaType.Photo:
+                    return item is Photo;
+
+                case Configuration.CriteriaType.Tag:
+                    return item.Tags != null &&
+                           item.Tags.Any(t => t.Contains(value, comparison));
+
+                case Configuration.CriteriaType.ParentalRating:
+                    return !string.IsNullOrEmpty(item.OfficialRating) &&
+                           item.OfficialRating.Equals(value, comparison);
+
+                case Configuration.CriteriaType.CommunityRating:
+                    return CompareNumericValue(item.CommunityRating, value);
+
+                case Configuration.CriteriaType.CriticsRating:
+                    return CompareNumericValue(item.CriticRating, value);
+
+                case Configuration.CriteriaType.AudioLanguage:
+                    return item.GetMediaStreams()
+                           .Any(stream =>
+                                stream.Type == MediaBrowser.Model.Entities.MediaStreamType.Audio &&
+                                !string.IsNullOrEmpty(stream.Language) &&
+                                stream.Language.Contains(value, comparison));
+
+                case Configuration.CriteriaType.Subtitle:
+                    return item.GetMediaStreams()
+                           .Any(stream =>
+                                stream.Type == MediaBrowser.Model.Entities.MediaStreamType.Subtitle &&
+                                !string.IsNullOrEmpty(stream.Language) &&
+                                stream.Language.Contains(value, comparison));
+
+                case Configuration.CriteriaType.ProductionLocation:
+                    return item.ProductionLocations != null &&
+                           item.ProductionLocations.Any(l => l.Contains(value, comparison));
+
+                case Configuration.CriteriaType.Year:
+                    if (item.ProductionYear.HasValue)
+                    {
+                        return CompareNumericValue(item.ProductionYear.Value, value);
+                    }
+                    return false;
+
+                case Configuration.CriteriaType.CustomRating:
+                    if (!string.IsNullOrWhiteSpace(item.CustomRating))
+                    {
+                        if (value.StartsWith(">") || value.StartsWith("<") || value.StartsWith("=") || float.TryParse(value, out _))
+                        {
+                            if (float.TryParse(item.CustomRating, out var actualNumeric))
+                            {
+                                return CompareNumericValue(actualNumeric, value);
+                            }
+                        }
+                        return item.CustomRating.Contains(value, comparison);
+                    }
+                    return false;
+
+                case Configuration.CriteriaType.Filename:
+                    return !string.IsNullOrEmpty(item.Path) && item.Path.Contains(value, comparison);
+
+                case Configuration.CriteriaType.ReleaseDate:
+                    return CompareDateValue(item.PremiereDate, value);
+
+                case Configuration.CriteriaType.AddedDate:
+                    return CompareDateValue(item.DateCreated, value);
+
+                // Home videos and photos have no episodes
+                case Configuration.CriteriaType.EpisodeAirDate:
+                    return false;
+
+                case Configuration.CriteriaType.Unplayed:
+                    return IsItemUnplayed(item);
+
+                case Configuration.CriteriaType.Watched:
+                    return !IsItemUnplayed(item);
+
+                default:
+                    return false;
+            }
+        }
+
         // ================================================================
         // EXPRESSION COLLECTION METHODS
         // ================================================================
@@ -1759,9 +2010,24 @@ namespace Jellyfin.Plugin.AutoCollections
                 IsVirtualItem = false,
                 Recursive = true
             }).OfType<Series>().ToList();
+
+            // Home videos (exclude movies/episodes, which also derive from Video)
+            var allHomeVideos = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Video },
+                IsVirtualItem = false,
+                Recursive = true
+            }).OfType<Video>().Where(v => v is not Movie && v is not Episode).ToList();
+
+            var allPhotos = _libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Photo },
+                IsVirtualItem = false,
+                Recursive = true
+            }).OfType<Photo>().ToList();
             
-            _logger.LogInformation("Found {MovieCount} movies and {SeriesCount} series to evaluate", 
-                allMovies.Count, allSeries.Count);
+            _logger.LogInformation("Found {MovieCount} movies, {SeriesCount} series, {VideoCount} home videos and {PhotoCount} photos to evaluate", 
+                allMovies.Count, allSeries.Count, allHomeVideos.Count, allPhotos.Count);
             
             _logger.LogDebug("Expression collection '{CollectionName}' - Expression: {Expression}", 
                 collectionName, expressionCollection.Expression);
@@ -1769,6 +2035,8 @@ namespace Jellyfin.Plugin.AutoCollections
             // Filter movies and series based on the expression
             var matchingMovies = new List<Movie>();
             var matchingSeries = new List<Series>();
+            var matchingHomeVideos = new List<Video>();
+            var matchingPhotos = new List<Photo>();
             
             if (expressionCollection.ParsedExpression != null)
             {
@@ -1818,6 +2086,48 @@ namespace Jellyfin.Plugin.AutoCollections
                             return matches;
                         })
                         .ToList();
+
+                    _logger.LogDebug("Evaluating home videos against expression...");
+
+                    matchingHomeVideos = allHomeVideos
+                        .Where(video => video != null)
+                        .Where(video =>
+                        {
+                            var matches = expressionCollection.ParsedExpression.Evaluate(
+                                (criteriaType, value) => EvaluateGenericItemCriteria(video, criteriaType, value, expressionCollection.CaseSensitive)
+                            );
+
+                            if (matches)
+                            {
+                                var year = video.ProductionYear?.ToString() ?? "Unknown year";
+                                _logger.LogDebug("  ✓ Home video matched: '{Title}' ({Year}) (ID: {Id})",
+                                    video.Name, year, video.Id);
+                            }
+
+                            return matches;
+                        })
+                        .ToList();
+
+                    _logger.LogDebug("Evaluating photos against expression...");
+
+                    matchingPhotos = allPhotos
+                        .Where(photo => photo != null)
+                        .Where(photo =>
+                        {
+                            var matches = expressionCollection.ParsedExpression.Evaluate(
+                                (criteriaType, value) => EvaluateGenericItemCriteria(photo, criteriaType, value, expressionCollection.CaseSensitive)
+                            );
+
+                            if (matches)
+                            {
+                                var year = photo.ProductionYear?.ToString() ?? "Unknown year";
+                                _logger.LogDebug("  ✓ Photo matched: '{Title}' ({Year}) (ID: {Id})",
+                                    photo.Name, year, photo.Id);
+                            }
+
+                            return matches;
+                        })
+                        .ToList();
                 }
                 finally
                 {
@@ -1826,11 +2136,15 @@ namespace Jellyfin.Plugin.AutoCollections
                 }
             }
             
-            _logger.LogInformation("Expression matched {MovieCount} movies and {SeriesCount} series", 
-                matchingMovies.Count, matchingSeries.Count);
+            _logger.LogInformation("Expression matched {MovieCount} movies, {SeriesCount} series, {VideoCount} home videos and {PhotoCount} photos", 
+                matchingMovies.Count, matchingSeries.Count, matchingHomeVideos.Count, matchingPhotos.Count);
                 
-            // Combine movies and series
-            var allMatchingItems = DedupeMediaItems(matchingMovies.Cast<BaseItem>().Concat(matchingSeries.Cast<BaseItem>()).ToList());         
+            // Combine all matching media items
+            var allMatchingItems = DedupeMediaItems(matchingMovies.Cast<BaseItem>()
+                .Concat(matchingSeries.Cast<BaseItem>())
+                .Concat(matchingHomeVideos.Cast<BaseItem>())
+                .Concat(matchingPhotos.Cast<BaseItem>())
+                .ToList());         
 
             // Update the collection (add new items, remove items that no longer match)
             await RemoveUnwantedMediaItems(collection, allMatchingItems);

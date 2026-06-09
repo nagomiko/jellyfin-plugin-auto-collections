@@ -129,6 +129,8 @@
                   <code>STUDIO "Marvel" AND (TITLE "Spiderman" OR ACTOR "Robert Downey JR.")</code> - Marvel items with Spiderman in the title or starring Robert Downey Jr.<br>
                   <code>GENRE "Action" AND MOVIE</code> - Action movies only (no TV shows)<br>
                   <code>TITLE "Avengers" OR (GENRE "Action" AND SHOW)</code> - Anything with "Avengers" in the title, plus Action TV shows<br>
+                  <code>TAG "Vacation" AND HOMEVIDEO</code> - Home videos tagged "Vacation" (use VIDEO or HOMEVIDEO)<br>
+                  <code>TITLE "2024" AND PHOTO</code> - Photos with "2024" in the title<br>
                   <br>
                   <strong>New Filter Types:</strong><br>
                   <code>TAG "Family" AND MOVIE</code> - Movies with the "Family" tag<br>
@@ -337,7 +339,9 @@
           const mediaOptions = [
             { value: '0', text: 'All' },
             { value: '1', text: 'Movies' },
-            { value: '2', text: 'Shows' }
+            { value: '2', text: 'Shows' },
+            { value: '3', text: 'Home Videos' },
+            { value: '4', text: 'Photos' }
           ];
           
           mediaOptions.forEach(opt => {
@@ -530,6 +534,12 @@
                       case "Series":
                         mediaTypeValue = 2;
                         break;
+                      case "HomeVideos":
+                        mediaTypeValue = 3;
+                        break;
+                      case "Photos":
+                        mediaTypeValue = 4;
+                        break;
                       // Fallback for numeric values (backward compatibility)
                       default:
                         if (typeof pair.MediaType === 'number') {
@@ -657,6 +667,12 @@
                 case 2:
                   mediaTypeString = "Series";
                   break;
+                case 3:
+                  mediaTypeString = "HomeVideos";
+                  break;
+                case 4:
+                  mediaTypeString = "Photos";
+                  break;
                 default:
                   mediaTypeString = "All";
               }
@@ -760,7 +776,7 @@
           }
             // Check for at least one criteria type
             const criteriaTypes = [
-            "TITLE", "GENRE", "STUDIO", "ACTOR", "DIRECTOR", "MOVIE", "SHOW",
+            "TITLE", "GENRE", "STUDIO", "ACTOR", "DIRECTOR", "MOVIE", "SHOW", "HOMEVIDEO", "VIDEO", "PHOTO",
             "TAG", "PARENTALRATING", "RATING", "COMMUNITYRATING", "CRITICSRATING",
             "PRODUCTIONLOCATION", "LOCATION", "COUNTRY", "LANG", "SUB", "YEAR", "CUSTOMRATING", "CUSTOM", "FILENAME"
           ];
@@ -774,7 +790,7 @@
           }            if (!hasCriteria) {
             return { 
               valid: false, 
-              error: "Expression must contain at least one criteria (TITLE, GENRE, STUDIO, ACTOR, DIRECTOR, MOVIE, SHOW, TAG, PARENTALRATING, COMMUNITYRATING, CRITICSRATING, PRODUCTIONLOCATION, LANG, SUB, YEAR, FILENAME)" 
+              error: "Expression must contain at least one criteria (TITLE, GENRE, STUDIO, ACTOR, DIRECTOR, MOVIE, SHOW, HOMEVIDEO, PHOTO, TAG, PARENTALRATING, COMMUNITYRATING, CRITICSRATING, PRODUCTIONLOCATION, LANG, SUB, YEAR, FILENAME)" 
             // Note: validation error message not updated to include CUSTOMRATING for legacy backward compatibility UI; actual parser supports it
             };
           }

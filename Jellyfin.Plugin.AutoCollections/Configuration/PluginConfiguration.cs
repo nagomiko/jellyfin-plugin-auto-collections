@@ -72,7 +72,9 @@ namespace Jellyfin.Plugin.AutoCollections.Configuration
     {
         All = 0,    // Include all media types (default)
         Movies = 1,  // Only include movies
-        Series = 2   // Only include TV series
+        Series = 2,   // Only include TV series
+        HomeVideos = 3, // Only include home videos
+        Photos = 4   // Only include photos
     }
 
     // Class for match-based collections (previously title-based only)

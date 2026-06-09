@@ -29,7 +29,9 @@ namespace Jellyfin.Plugin.AutoCollections.Configuration
         EpisodeAirDate = 18, // Match by most recent episode air date (for TV shows)
         Unplayed = 19,  // Match unplayed items (not watched by any user)
         Watched = 20,   // Match watched items (played by at least one user)
-        Filename = 21   // Match by filename
+        Filename = 21,  // Match by filename
+        HomeVideo = 22, // Match only home videos
+        Photo = 23      // Match only photos
     }
 
     // Token types for expression parsing
@@ -97,6 +99,7 @@ namespace Jellyfin.Plugin.AutoCollections.Configuration
         {
             // For media type criteria and play state criteria, don't include the value part
             if (CriteriaType == CriteriaType.Movie || CriteriaType == CriteriaType.Show ||
+                CriteriaType == CriteriaType.HomeVideo || CriteriaType == CriteriaType.Photo ||
                 CriteriaType == CriteriaType.Unplayed || CriteriaType == CriteriaType.Watched)
             {
                 return $"{CriteriaType.ToString().ToUpper()}";
@@ -303,6 +306,21 @@ namespace Jellyfin.Plugin.AutoCollections.Configuration
                 if (TryMatchCriteria(expression, ref position, "SHOW", out var showToken))
                 {
                     tokens.Add(showToken);
+                    continue;
+                }
+                if (TryMatchCriteria(expression, ref position, "HOMEVIDEO", out var homeVideoToken))
+                {
+                    tokens.Add(homeVideoToken);
+                    continue;
+                }
+                if (TryMatchCriteria(expression, ref position, "VIDEO", out var videoToken))
+                {
+                    tokens.Add(videoToken);
+                    continue;
+                }
+                if (TryMatchCriteria(expression, ref position, "PHOTO", out var photoToken))
+                {
+                    tokens.Add(photoToken);
                     continue;
                 }
 
@@ -601,6 +619,13 @@ namespace Jellyfin.Plugin.AutoCollections.Configuration
                         case "SHOW":
                             token.CriteriaType = Configuration.CriteriaType.Show;
                             break;
+                        case "HOMEVIDEO":
+                        case "VIDEO":
+                            token.CriteriaType = Configuration.CriteriaType.HomeVideo;
+                            break;
+                        case "PHOTO":
+                            token.CriteriaType = Configuration.CriteriaType.Photo;
+                            break;
                         case "LANG":
                             token.CriteriaType = Configuration.CriteriaType.AudioLanguage;
                             break;
@@ -717,6 +742,7 @@ namespace Jellyfin.Plugin.AutoCollections.Configuration
 
                 // Special handling for criteria that don't require string values
                 if (criteriaToken.CriteriaType == CriteriaType.Movie || criteriaToken.CriteriaType == CriteriaType.Show ||
+                    criteriaToken.CriteriaType == CriteriaType.HomeVideo || criteriaToken.CriteriaType == CriteriaType.Photo ||
                     criteriaToken.CriteriaType == CriteriaType.Unplayed || criteriaToken.CriteriaType == CriteriaType.Watched)
                 {
                     return new CriteriaNode(criteriaToken.CriteriaType.Value, string.Empty);

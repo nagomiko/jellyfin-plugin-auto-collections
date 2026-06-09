@@ -16,7 +16,7 @@ The Auto Collections plugin enables you to create smart collections that automat
 #### Simple Collections
 - **Quick Setup**: Easy-to-use interface for basic collections
 - **Single Criterion**: Each collection uses one matching criterion
-- **Media Filtering**: Filter by Movies, TV Shows, or All content
+- **Media Filtering**: Filter by Movies, TV Shows, Home Videos, Photos, or All content
 - **Case Control**: Configurable case-sensitive matching
 
 #### Advanced Collections
@@ -39,7 +39,9 @@ The Auto Collections plugin enables you to create smart collections that automat
 #### Media Type Filtering
 - **Movie**: Include only movies
 - **Show**: Include only TV series
-- **All**: Include both movies and TV shows
+- **Home Videos**: Include only home videos
+- **Photos**: Include only photos
+- **All**: Include movies, TV shows, home videos, and photos
 
 #### Rating-Based Filtering
 - **Parental Rating**: Filter by age ratings (G, PG, PG-13, R, etc.) - uses exact matching
@@ -83,6 +85,8 @@ Here are the REAL keywords you can use in expressions:
 **Media Type Criteria:**
 - `MOVIE` - Match only movies
 - `SHOW` - Match only TV shows
+- `HOMEVIDEO` / `VIDEO` - Match only home videos
+- `PHOTO` - Match only photos
 
 **Rating Criteria:**
 - `PARENTALRATING` / `PARENTAL` / `RATING` - Match by parental rating
@@ -179,7 +183,7 @@ Day-based comparisons for temporal criteria:
 
 1. Navigate to `Dashboard -> Plugins -> My Plugins -> Auto Collections`
 2. Choose match type: Title, Genre, Studio, Actor, or Director
-3. Set media type filter: All, Movies only, or Shows only
+3. Set media type filter: All, Movies only, Shows only, Home Videos only, or Photos only
 4. Enter search string
 5. Configure case sensitivity
 6. Set custom collection name (optional)
